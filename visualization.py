@@ -1,19 +1,25 @@
 import matplotlib.pyplot as plt
 import numpy as np
+from environment import MazeEnvironment
 
-def save_maze_visual(grid, path, maze_name):
-    # Convert grid to numpy for easier manipulation if not already
-    vis_grid = np.array(grid, dtype=float)
-    
-    # Mark the path with a distinct value (e.g., 0.5) [cite: 518]
+def save_full_maze_visual(path, maze_name="training"):
+    """
+    Visualize the full 129x129 maze from MazeEnvironment and overlay the BFS path.
+    Args:
+        path: List of (x, y) tuples representing the BFS path.
+        maze_name: Maze file prefix (default 'training').
+    """
+    env = MazeEnvironment(maze_name)
+    grid = np.array(env.grid, dtype=float)
+
+    # Overlay the BFS path (path is a list of (x, y) tuples)
     for (x, y) in path:
-        vis_grid[y][x] = 0.5 
-    
-    plt.figure(figsize=(8, 8))
-    # 'viridis' or 'plasma' helps the path stand out against black walls [cite: 493]
-    plt.imshow(vis_grid, cmap='viridis') 
+        grid[y][x] = 0.5  # Mark path (ensure (x, y) order matches grid[y][x])
+
+    plt.figure(figsize=(10, 10))
+    plt.imshow(grid, cmap='viridis', interpolation='nearest')
     plt.title(f"BFS Solution: {maze_name} (Length: {len(path)})")
-    plt.axis('off') # Cleaner look for slides
+    plt.axis('off')
+    plt.gca().set_aspect('equal', adjustable='box')
     plt.savefig(f"{maze_name}_solution.png")
     plt.close()
-  

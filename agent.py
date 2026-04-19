@@ -2,6 +2,7 @@ from collections import deque
 from typing import List, Tuple, Optional
 
 from environment import Action, TurnResult, MazeEnvironment, Agent
+from imageToMaze import extract_hazards
 
 #solves the maze using BFS 
 
@@ -107,6 +108,10 @@ class MyAgent(Agent):
 if __name__ == "__main__":
     try:
         env = MazeEnvironment("training")
+        hazards = extract_hazards("maze-alpha")
+        env.apply_hazards(hazards)
+        fire_count = sum(1 for row in env.grid for cell in row if cell == 4)
+        print(f"Fire cells in grid: {fire_count}")
     except Exception as e:
         print(f"Error loading maze: {e}")
         raise SystemExit(1)

@@ -43,11 +43,14 @@ class MazeEnvironment:
         self.turn_count = 0
         self.max_turns = 10000
         self.teleports = {}
-        self.load_maze(f"{maze_id}.txt") # Assumes .txt extension
-
 
         # Adding number of confused turns to stats
         self.turns_confused = 0
+        self.episode_num = 0
+        self.base_fire_coords = []
+        self.fire_pivots = []
+
+        self.load_maze(f"{maze_id}.txt") # Assumes .txt extension
 
     def load_maze(self, filename: str):
         try:
@@ -69,13 +72,6 @@ class MazeEnvironment:
                         elif val == 3: # Goal
                             self.goal_pos = (x, y)
                     self.grid.append(row)
-            
-            # Displays the maze grid with hazards or without for visual verification, close the plot to continue execution
-            grid_array = np.array(self.grid)
-            cmap = ListedColormap(['white', 'black', 'green', 'red', 'orange', 'purple', 'yellow', 'cyan'])
-            plt.imshow(grid_array, cmap=cmap, vmin=0, vmax=7)
-            plt.title("Maze Grid with Hazards")
-            plt.show()
 
         except FileNotFoundError:
              raise Exception(f"Could not load maze file: {filename}")
@@ -83,9 +79,8 @@ class MazeEnvironment:
     def apply_hazards(self, hazards):
         # grab hazards from the maze file and apply them to the grid
         # fire
-        for (y, x) in hazards.get('fire', []):
-            if 0 <= y < len(self.grid) and 0 <= x < len(self.grid[0]):
-                self.grid[y][x] = 4
+        self.base_fire_coords = hazards.get('fire', [])
+        self.fire_pivots = hazards.get('fire_pivots', [])
         # confusion
         for (y, x) in hazards.get('confusion', []):
             if 0 <= y < len(self.grid) and 0 <= x < len(self.grid[0]):
@@ -112,6 +107,13 @@ class MazeEnvironment:
         """
         self.agent_pos = self.start_pos
         self.turn_count = 0
+        # reset confusion turns
+        self.turns_confused = 0
+        # Draw the correct fire for this episode
+        if self.base_fire_coords:
+            self._apply_rotated_fire()
+
+        self.episode_num += 1
         return self.agent_pos
 
     def step(self, actions: List[Action]) -> TurnResult:
@@ -205,6 +207,53 @@ class MazeEnvironment:
             "turns_taken": self.turn_count,
             "goal_reached": (self.agent_pos == self.goal_pos)
         }
+
+    # Apply the fire to the grid based on the episode number
+    def _apply_rotated_fire(self):
+        # make sure to clear the fire
+        for y in range(len(self.grid)):
+            for x in range(len(self.grid[0])):
+                if self.grid[y][x] == 4:
+                    self.grid[y][x] = 0
+
+        # determine the fire rotation based on the episode number
+        rotation_state = self.episode_num % 4
+        new_fire_coords = []
+
+        # rotate the fire based on the pivoted position
+        for y, x in self.base_fire_coords:
+            curr_y, curr_x = y, x
+            if self.fire_pivots:
+                pivot = min(self.fire_pivots, key=lambda p: (p[0] - y) ** 2 + (p[1] - x) ** 2)
+
+                # Apply the rotation helper 'rotation_state' times
+                for _ in range(rotation_state):
+                    curr_y, curr_x = self._rotate_90_cw(curr_y, curr_x, pivot)
+
+            new_fire_coords.append((curr_y, curr_x))
+
+        # spin cells around the pivot
+        for y, x in new_fire_coords:
+            if 0 <= y < len(self.grid) and 0 <= x < len(self.grid[0]):
+                # Only draw on open paths (Value 0)
+                if self.grid[y][x] == 0:
+                    self.grid[y][x] = 4
+
+
+    # do the rotation math for clock wise
+    def _rotate_90_cw(self, y: int, x: int, pivot: Tuple[int, int]) -> Tuple[int, int]:
+        pivot_y, pivot_x = pivot
+
+        # Shift pivot to origin
+        dy = y - pivot_y
+        dx = x - pivot_x
+
+        # Rotate 90 degrees CW
+        new_dx = -dy
+        new_dy = dx
+
+        # Shift back to pivot
+        return pivot_y + new_dy, pivot_x + new_dx
 
 class Agent:
     """

@@ -1,6 +1,75 @@
 import numpy as np
 from PIL import Image
 
+HAZARD_DATA = {
+    "maze-alpha": {
+        "teleports": {
+            # green pair: green star <-> green dot
+            (23, 111): (71, 63),
+            (71, 63):  (23, 111),
+            # purple pair: purple star <-> purple dot
+            (109, 53): (93, 19),
+            (93, 19):  (109, 53),
+            # orange pair: orange star <-> orange dot
+            (15, 61):  (119, 111),
+            (119, 111): (15, 61),
+        },
+        "confusion": [(5, 35), (37, 33), (79, 57)]
+    },
+    "maze-beta": {
+        "teleports": {
+            # Green pair: Top Edge <-> Bottom Right
+            (1, 53): (95, 121),
+            (95, 121): (1, 53),
+
+            # Red pair: Top Left <-> Bottom Right
+            (25, 23): (121, 109),
+            (121, 109): (25, 23),
+
+            # Purple pair: Middle Left <-> Top Right
+            (63, 21): (27, 125),
+            (27, 125): (63, 21),
+
+            # Gold/Orange pair: Bottom Left <-> Center
+            (121, 5): (65, 63),
+            (65, 63): (121, 5),
+        },
+        "confusion": [(5, 9), (9, 105), (87, 27), (91, 101)]
+    },
+    "maze-gamma": {
+        "teleports": {
+            # Pink/Red pair: Top Right <-> Upper Left-Mid
+            (3, 125): (27, 41),
+            (27, 41): (3, 125),
+
+            # Green pair: Upper Right-Mid <-> Lower Right-Mid
+            (25, 105): (53, 103),
+            (53, 103): (25, 105),
+
+            # Yellow pair: Mid Left <-> Mid Right
+            (77, 9): (69, 95),
+            (69, 95): (77, 9),
+
+            # Purple pair: Bottom Left Corner <-> Bottom Mid-Right
+            (127, 1): (113, 91),
+            (113, 91): (127, 1),
+        },
+        "confusion": [
+            (23, 21),  # Top Left
+            (21, 105),  # Top Right
+            (53, 13),  # Mid Left
+            (105, 69)  # Bottom Mid
+        ],
+        "blue_traps": [
+            (21, 55),  # Top Mid (Up)
+            (33, 21),  # Mid Left (Up)
+            (99, 17),  # Bottom Left (Up)
+            (27, 77),  # Top Right-Mid (Left)
+            (47, 67),  # Center (Left)
+            (99, 111)  # Bottom Right (Left)
+        ]
+    }
+}
 
 def _find_border_openings(black_border_line):
     """Return contiguous open runs (inclusive start/end) along one image border."""
@@ -127,6 +196,59 @@ def convert_image(image_path, output_path, maze_cells=64, threshold=128):
     print(f"Goal detected at  {goal_pos} from {goal_info[0]} border pixels {goal_info[1]}-{goal_info[2]}")
     print("1 = wall, 0 = open path, 2 = start, 3 = goal")
 
+def extract_hazards(maze_folder, maze_cells=64):
+    # use the same logic of read maze to hazards
+    hazard_path = f"{maze_folder}/MAZE_1.png"
+    img = Image.open(hazard_path).convert("RGBA")
+    pixelate = np.array(img)
+
+    step = (img.height - 2) // maze_cells
+
+    fire = []
+    teleport_candidates = []
+    confusion = []
+
+    # loop through cells, find color match, exact same from before
+    for r in range(maze_cells):
+        for c in range(maze_cells):
+            cx = 1 + c * step + step // 2
+            cy = 1 + r * step + step // 2
+
+            # if sample is NOT white continue
+            patch = pixelate[cy - 5:cy + 5, cx - 5:cx + 5, :3].reshape(-1, 3)
+            non_white = [p for p in patch if not (p[0] > 220 and p[1] > 220 and p[2] > 220)]
+            if not non_white:
+                continue
+
+            rv, gv, bv = [int(x) for x in np.mean(non_white, axis=0)]
+
+            grid_row = 2 * r + 1
+            grid_col = 2 * c + 1
+
+            # orange fire: high R, mid G, low B
+            if rv > 200 and gv > 80 and bv < 100:
+                fire.append((grid_row, grid_col))
+
+    # pull teleporting and confusion from the lookup table
+    data = HAZARD_DATA.get(maze_folder, {"teleports": {}, "confusion": [], "blue_traps": []})
+    teleport_cells = set(data["teleports"].keys())
+    confusion_cells = set(data["confusion"])
+
+    # Exclude BOTH teleports and confusion from the fire detection
+    fire = [f for f in fire if f not in teleport_cells and f not in confusion_cells]
+
+    return {
+        'fire': fire,
+        'teleports': data["teleports"],
+        'confusion': data["confusion"],
+        'blue_traps': data.get("blue_traps", [])  # Add this line
+    }
 
 if __name__ == "__main__":
-    convert_image("MAZE_0.png", "training.txt")
+    maze = "maze-alpha"
+
+    convert_image(f"{maze}/MAZE_0.png", "training.txt")
+    hazards = extract_hazards(maze)
+    print(f"Fire: {len(hazards['fire'])}")
+    print(f"Teleports: {len(hazards['teleports'])} entries")
+    print(f"Confusion: {hazards['confusion']}")

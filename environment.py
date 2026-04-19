@@ -42,7 +42,9 @@ class MazeEnvironment:
         self.agent_pos = (0, 0)
         self.turn_count = 0
         self.max_turns = 10000
+        self.teleports = {}
         self.load_maze(f"{maze_id}.txt") # Assumes .txt extension
+
 
         # Adding number of confused turns to stats
         self.turns_confused = 0
@@ -67,61 +69,39 @@ class MazeEnvironment:
                         elif val == 3: # Goal
                             self.goal_pos = (x, y)
                     self.grid.append(row)
-
-            # apply hazzards onto the grid if togel hazards is true
-            if self.include_hazards:
-                self.apply_hazards()
             
-            # Dsplays the maze grid with hazards or without for visual verification, close the plot to continue execution
+            # Displays the maze grid with hazards or without for visual verification, close the plot to continue execution
             grid_array = np.array(self.grid)
-            plt.imshow(grid_array, cmap=ListedColormap(['white', 'black', 'green', 'red', 'orange', 'purple', 'blue']), vmin=0, vmax=6)
+            cmap = ListedColormap(['white', 'black', 'green', 'red', 'orange', 'purple', 'yellow', 'cyan'])
+            plt.imshow(grid_array, cmap=cmap, vmin=0, vmax=7)
             plt.title("Maze Grid with Hazards")
             plt.show()
 
         except FileNotFoundError:
              raise Exception(f"Could not load maze file: {filename}")
-        
-    def apply_hazards(self):
-        # List of cordinates for fire patterns (Death Pits)
-        self.fire_patterns = [
-            [(17, 15), (19, 13), (21, 11), (23, 9), (19, 17), (21, 19), (23, 21)], # Top-Left
-            [(43, 69), (45, 67), (47, 65), (49, 63), (51, 65), (53, 67), (55, 69)], # Middle-Right
-            [(63, 11), (65, 13), (67, 15), (69, 17), (65, 21), (67, 19), (63, 23)],           # Middle-Left
-            [(85, 95), (87, 97), (89, 99), (91, 101), (93, 99), (95, 97), (97, 95)],# Bottom-Right
-            [(127,5), (125,3), (123,1), (121,2), (119, 5), (117,7)]                                # Bottom-Left Line
-        ]
 
-        # List of cordinates for confused patterns
-        self.confusion_traps = [(5, 35), (37, 33), (79, 57)]
-
-        # List of cordinates for teleportation patterns mapped to dummy destination
-        self.teleports = {
-            # Purple teleportation tiles
-            (93, 19): (109, 53), 
-            (109, 53): (93, 19),
-
-            # Green teleportation tiles
-            (71,63): (23,111),
-            (23,111): (71,63),
-
-            # Yellow teleportation tiles
-            (119, 111): (15, 61),
-            (15, 61): (119, 111)
-        }
-
-        # Write hazards to the grid
-        for pattern in self.fire_patterns:
-            for y, x in pattern:
-                if 0 <= y < len(self.grid) and 0 <= x < len(self.grid[0]):
-                    self.grid[y][x] = 4 # Death Pit
-        
-        for y, x in self.confusion_traps:
+    def apply_hazards(self, hazards):
+        # grab hazards from the maze file and apply them to the grid
+        # fire
+        for (y, x) in hazards.get('fire', []):
             if 0 <= y < len(self.grid) and 0 <= x < len(self.grid[0]):
-                self.grid[y][x] = 6 # Confusion Trap
-
-        for (y, x), (dest_y, dest_x) in self.teleports.items():
+                self.grid[y][x] = 4
+        # confusion
+        for (y, x) in hazards.get('confusion', []):
             if 0 <= y < len(self.grid) and 0 <= x < len(self.grid[0]):
-                self.grid[y][x] = 5 # Teleportation Tile
+                self.grid[y][x] = 6
+        # teleport
+        for src, dest in hazards.get('teleports', {}).items():
+            src_y, src_x = src
+            dest_y, dest_x = dest
+            if 0 <= src_y < len(self.grid) and 0 <= src_x < len(self.grid[0]):
+                self.grid[src_y][src_x] = 5
+                self.teleports[(src_x, src_y)] = (dest_x, dest_y)
+        # conveyer traps
+        for (y, x) in hazards.get('blue_traps', []):
+            if 0 <= y < len(self.grid) and 0 <= x < len(self.grid[0]):
+                self.grid[y][x] = 7
+
 
 
     def reset(self) -> Tuple[int, int]:

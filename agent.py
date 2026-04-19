@@ -110,6 +110,7 @@ if __name__ == "__main__":
         env = MazeEnvironment("training")
         hazards = extract_hazards("maze-alpha")
         env.apply_hazards(hazards)
+        start = env.reset()
         fire_count = sum(1 for row in env.grid for cell in row if cell == 4)
         print(f"Fire cells in grid: {fire_count}")
     except Exception as e:

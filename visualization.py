@@ -1,25 +1,107 @@
 import matplotlib.pyplot as plt
-import numpy as np
-from environment import MazeEnvironment
+import matplotlib.animation as animation
+import matplotlib.patches as mpatches
 
-def save_full_maze_visual(path, maze_name="training"):
-    """
-    Visualize the full 129x129 maze from MazeEnvironment and overlay the BFS path.
-    Args:
-        path: List of (x, y) tuples representing the BFS path.
-        maze_name: Maze file prefix (default 'training').
-    """
-    env = MazeEnvironment(maze_name)
-    grid = np.array(env.grid, dtype=float)
+GRID = 64
 
-    # Overlay the BFS path (path is a list of (x, y) tuples)
-    for (x, y) in path:
-        grid[y][x] = 0.5  # Mark path (ensure (x, y) order matches grid[y][x])
 
-    plt.figure(figsize=(10, 10))
-    plt.imshow(grid, cmap='viridis', interpolation='nearest')
-    plt.title(f"BFS Solution: {maze_name} (Length: {len(path)})")
-    plt.axis('off')
-    plt.gca().set_aspect('equal', adjustable='box')
-    plt.savefig(f"{maze_name}_solution.png")
-    plt.close()
+def animate_path(passable, path_cells, hazards_data, title="Live Agent Run"):
+    fig, ax = plt.subplots(figsize=(10, 10))
+    ax.set_facecolor('#1a1a2e')  # dark background
+
+    # --- WALLS ---
+    h_y, h_xmin, h_xmax = [], [], []
+    v_x, v_ymin, v_ymax = [], [], []
+    for y in range(GRID):
+        for x in range(GRID):
+            if not passable[y][x][0]:  # UP wall
+                h_y.append(y - 0.5); h_xmin.append(x - 0.5); h_xmax.append(x + 0.5)
+            if not passable[y][x][1]:  # DOWN wall
+                h_y.append(y + 0.5); h_xmin.append(x - 0.5); h_xmax.append(x + 0.5)
+            if not passable[y][x][2]:  # LEFT wall
+                v_x.append(x - 0.5); v_ymin.append(y - 0.5); v_ymax.append(y + 0.5)
+            if not passable[y][x][3]:  # RIGHT wall
+                v_x.append(x + 0.5); v_ymin.append(y - 0.5); v_ymax.append(y + 0.5)
+
+    ax.hlines(h_y, h_xmin, h_xmax, color='#e0e0e0', linewidth=0.8, alpha=0.7)
+    ax.vlines(v_x, v_ymin, v_ymax, color='#e0e0e0', linewidth=0.8, alpha=0.7)
+
+    # --- TELEPORT PADS ---
+    for (sy, sx), (dy, dx) in hazards_data.get('teleports', {}).items():
+        src = ((sx - 1) // 2, (sy - 1) // 2)
+        dst = ((dx - 1) // 2, (dy - 1) // 2)
+        ax.scatter(*src, color='#bf5fff', marker='s', s=90, zorder=3, label='_tp_src')
+        ax.scatter(*dst, color='#ff9f1c', marker='*', s=160, zorder=3, label='_tp_dst')
+
+    # --- CONFUSION PADS ---
+    for (y, x) in hazards_data.get('confusion', []):
+        cx = (x - 1) // 2
+        cy = (y - 1) // 2
+        ax.scatter(cx, cy, color='#f7d716', marker='x', s=80, linewidths=2, zorder=3)
+
+    # --- FIRE PITS (static positions for reference) ---
+    for (y, x) in hazards_data.get('fire', []):
+        fx = (x - 1) // 2
+        fy = (y - 1) // 2
+        ax.scatter(fx, fy, color='#ff4500', marker='^', s=40, alpha=0.5, zorder=2)
+
+    # --- PATH ANIMATION ---
+    if not path_cells:
+        print("No path cells to animate.")
+        plt.show()
+        return
+
+    px = [c[0] for c in path_cells]
+    py = [c[1] for c in path_cells]
+
+    # Start and Goal markers
+    ax.scatter(px[0],  py[0],  color='#00ff88', s=200, zorder=7,
+               edgecolors='white', linewidths=1.5, label='Start')
+    ax.scatter(px[-1], py[-1], color='#ff3366', s=200, zorder=7,
+               edgecolors='white', linewidths=1.5, label='Goal')
+
+    line,       = ax.plot([], [], color='#00cfff', linewidth=1.5, alpha=0.7, zorder=5)
+    agent_dot,  = ax.plot([], [], 'o', color='#ffffff', markersize=7,
+                          markeredgecolor='#00cfff', markeredgewidth=1.5, zorder=6)
+
+    # Turn counter text
+    turn_text = ax.text(0.02, 0.97, '', transform=ax.transAxes,
+                        color='white', fontsize=10, va='top',
+                        bbox=dict(boxstyle='round,pad=0.3', facecolor='#00000088', edgecolor='none'))
+
+    def init():
+        line.set_data([], [])
+        agent_dot.set_data([], [])
+        turn_text.set_text('')
+        return line, agent_dot, turn_text
+
+    def update(frame):
+        line.set_data(px[:frame + 1], py[:frame + 1])
+        agent_dot.set_data([px[frame]], [py[frame]])
+        turn_text.set_text(f'Turn: {frame + 1} / {len(path_cells)}')
+        return line, agent_dot, turn_text
+
+    ani = animation.FuncAnimation(
+        fig, update, frames=len(path_cells),
+        init_func=init, blit=True, interval=15, repeat=False
+    )
+
+    # --- LEGEND ---
+    legend_handles = [
+        mpatches.Patch(color='#00ff88', label='Start'),
+        mpatches.Patch(color='#ff3366', label='Goal'),
+        mpatches.Patch(color='#bf5fff', label='Teleport Source'),
+        mpatches.Patch(color='#ff9f1c', label='Teleport Dest'),
+        mpatches.Patch(color='#f7d716', label='Confusion Pad'),
+        mpatches.Patch(color='#ff4500', label='Fire Pit'),
+        mpatches.Patch(color='#00cfff', label='Agent Path'),
+    ]
+    ax.legend(handles=legend_handles, loc='lower right', fontsize=8,
+              facecolor='#1a1a2e', edgecolor='white', labelcolor='white')
+
+    ax.set_title(title, fontsize=14, color='white', pad=12)
+    ax.invert_yaxis()
+    ax.axis('off')
+    fig.patch.set_facecolor('#1a1a2e')
+    plt.tight_layout()
+    plt.show()

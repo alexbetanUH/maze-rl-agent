@@ -25,13 +25,14 @@ from collections import deque
 from PIL import Image
 import numpy as np
 
+
 # constants
 GRID   = 64
 CELL   = 16
 OFFSET = 1
 
 # load image
-img = Image.open('MAZE_1.png')
+img = Image.open('maze-alpha/MAZE_1.png')
 arr = np.array(img)[:, :, :3]
 
 

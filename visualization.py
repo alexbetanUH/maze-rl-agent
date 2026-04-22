@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import matplotlib.patches as mpatches
+import numpy as np
 
 GRID = 64
 
@@ -39,11 +40,18 @@ def animate_path(passable, path_cells, hazards_data, title="Live Agent Run"):
         cy = (y - 1) // 2
         ax.scatter(cx, cy, color='#f7d716', marker='x', s=80, linewidths=2, zorder=3)
 
-    # --- FIRE PITS (static positions for reference) ---
-    for (y, x) in hazards_data.get('fire', []):
-        fx = (x - 1) // 2
-        fy = (y - 1) // 2
-        ax.scatter(fx, fy, color='#ff4500', marker='^', s=40, alpha=0.5, zorder=2)
+    # --- ROTATING FIRE SETUP ---
+    from maze_agent import V_GROUPS, _rot90
+
+    fire_scatters = []
+    for vg in V_GROUPS:
+        # Draw pivot point (static, dark red)
+        px, py = vg['pivot']
+        ax.scatter(px, py, color='#8b0000', marker='^', s=70, zorder=4, alpha=0.9)
+
+        # Create dynamic scatter for rotating arms
+        fire_plot = ax.scatter([], [], color='#ff4500', marker='s', s=55, alpha=0.8, zorder=2)
+        fire_scatters.append((vg, fire_plot))
 
     # --- PATH ANIMATION ---
     if not path_cells:
@@ -73,13 +81,26 @@ def animate_path(passable, path_cells, hazards_data, title="Live Agent Run"):
         line.set_data([], [])
         agent_dot.set_data([], [])
         turn_text.set_text('')
-        return line, agent_dot, turn_text
+        return [line, agent_dot, turn_text] + [fs[1] for fs in fire_scatters]
 
     def update(frame):
         line.set_data(px[:frame + 1], py[:frame + 1])
         agent_dot.set_data([px[frame]], [py[frame]])
         turn_text.set_text(f'Turn: {frame + 1} / {len(path_cells)}')
-        return line, agent_dot, turn_text
+
+        # ROTATE THE FIRE
+        rotation_state = (frame // 5) % 4
+        for vg, fire_plot in fire_scatters:
+            arms = vg['arms']
+            for _ in range(rotation_state):
+                arms = _rot90(arms, vg['pivot'])
+            valid_arms = [(x, y) for x, y in arms if 0 <= x < GRID and 0 <= y < GRID]
+            if valid_arms:
+                fire_plot.set_offsets(valid_arms)
+            else:
+                fire_plot.set_offsets(np.empty((0, 2)))
+
+        return [line, agent_dot, turn_text] + [fs[1] for fs in fire_scatters]
 
     ani = animation.FuncAnimation(
         fig, update, frames=len(path_cells),

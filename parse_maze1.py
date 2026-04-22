@@ -32,7 +32,7 @@ CELL   = 16
 OFFSET = 1
 
 # load image
-img = Image.open('MAZE_1.png')
+img = Image.open('maze-alpha/MAZE_1.png')
 arr = np.array(img)[:, :, :3]
 
 
@@ -136,7 +136,6 @@ for cy in range(GRID):
         cell  = [cx, cy]
         if label == 'death_pit_small': death_pits_small.append(cell)
         elif label == 'green_marker':  green_markers.append(cell)
-        elif label == 'start':         starts.append(cell)
         elif label == 'confusion':     confusions.append(cell)
         elif label == 'gold_marker':   gold_markers.append(cell)
         elif label == 'teleport_pad':  teleport_pads.append(cell)
@@ -167,29 +166,14 @@ print(f"  Gold markers (tp dest)        : {gold_markers}")
 print(f"  Large orange tp pads          : {teleport_pads}")
 
 
-# determine START and GOAL
-# Heuristic: if one green marker and one gold marker exist,
-# green = goal, gold = teleport destination.
-# If two green markers, the one further from the death pit clusters = goal.
-start_pos = starts[0] if starts else None
-goal_pos  = green_markers[0] if len(green_markers) == 1 else None
+START = (31, 0)
+GOAL  = (31, 63)
 
-if len(green_markers) == 2:
-    # Pick the one with lower BFS distance to centre as goal (rough heuristic)
-    # User can override in hazards.json if wrong
-    goal_pos = green_markers[0]
-    print(f"\n  WARNING: two green markers found {green_markers}.")
-    print(f"  Defaulting goal to {goal_pos}. Edit hazards.json if wrong.")
+start_pos = [START[0], START[1]]
+goal_pos  = [GOAL[0],  GOAL[1]]
 
-if start_pos is None:
-    print("\n  WARNING: no start position detected. Defaulting to (0,0).")
-    start_pos = [0, 0]
-if goal_pos is None:
-    print("\n  WARNING: no goal detected. Defaulting to (63,63).")
-    goal_pos = [63, 63]
-
-print(f"\n  START inferred : {start_pos}")
-print(f"  GOAL  inferred : {goal_pos}")
+print(f"\n  START fixed     : {start_pos}")
+print(f"  GOAL  fixed     : {goal_pos}")
 
 
 # BFS distance from GOAL

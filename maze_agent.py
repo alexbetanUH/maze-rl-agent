@@ -42,6 +42,7 @@ START  = (31, 0)
 GOAL   = (31, 63)
 
 # --- FIRE ROTATION LOGIC ---
+# Use same fire pattern for both mazes
 V_GROUPS = [
     {'pivot':(7,8),  'arms':[(6,9),(5,10),(4,11),(8,9),(9,10),(10,11)]},
     {'pivot':(8,34), 'arms':[(7,33),(6,32),(5,31),(9,33),(10,32),(11,31)]},
@@ -64,6 +65,27 @@ def _get_pits(turn_count):
             if 0<=c[0]<GRID and 0<=c[1]<GRID: pits.add(c)
     return frozenset(pits)
 
+
+def build_dynamic_fires(maze_name, hazards_dict):
+    v_groups = []
+
+    for (y_128, x_128) in hazards_dict.get('fire_pivots', []):
+        # Convert 128x128 (Y, X) to 64x64 (X, Y)
+        px = (x_128 - 1) // 2
+        py = (y_128 - 1) // 2
+
+        # Auto-generate the V-shaped arms
+        arms = [
+            (px - 1, py + 1), (px - 2, py + 2), (px - 3, py + 3),  # Left Blade
+            (px + 1, py + 1), (px + 2, py + 2), (px + 3, py + 3)  # Right Blade
+        ]
+
+        v_groups.append({
+            'pivot': (px, py),
+            'arms': arms
+        })
+
+    return v_groups
 
 _DELTA  = {Action.MOVE_UP:(0,-1),Action.MOVE_DOWN:(0,1),
            Action.MOVE_LEFT:(-1,0),Action.MOVE_RIGHT:(1,0),Action.WAIT:(0,0)}
@@ -220,7 +242,7 @@ class QLearningAgent:
     def plan_turn(self, last_result):
         if last_result is not None:
             self._process(last_result)
-        return self._pack(1)
+        return self._pack(5)
 
     def _process(self, res):
         pos = res.current_position
@@ -266,6 +288,10 @@ class QLearningAgent:
         sim_pos = self.current_pos
         confused = self._confused_rem > 0
 
+        # If we start the turn confused, we are only allowed to take 1 slow step.
+        if confused:
+            n = 1
+
         for _ in range(n):
             a = self._pick(sim_pos, confused)
             if a is None: a = Action.WAIT
@@ -275,9 +301,19 @@ class QLearningAgent:
             if eff in _DELTA:
                 dx, dy = _DELTA[eff]
                 nx, ny = sim_pos[0] + dx, sim_pos[1] + dy
+
                 # Wait actions (0,0) don't trigger wall checks
                 if 0 <= nx < GRID and 0 <= ny < GRID and (
                         a == Action.WAIT or self.passable[sim_pos[1]][sim_pos[0]][eff.value]):
+
+                    # Stop the 5-step sprint if we predict hitting a known teleport
+                    if (nx, ny) in self.teleport_map:
+                        break
+
+                    # Stop the 5-step sprint if we predict hitting a known confusion pad
+                    if (nx, ny) in self.confusion_map:
+                        break
+
                     sim_pos = self.teleport_map.get((nx, ny), (nx, ny))
                     if sim_pos == GOAL: break
 
@@ -390,6 +426,9 @@ if __name__=='__main__':
         dst = ((dx - 1) // 2, (dy - 1) // 2)
         teleport_64[src] = dst
 
+    # Rebuild V_GROUPS dynamically for this maze
+    V_GROUPS = build_dynamic_fires(maze_folder, dynamic_hazards)
+
     # Teleport-Aware BFS Distance Map
     from collections import deque
 
@@ -408,7 +447,12 @@ if __name__=='__main__':
                 dist_new[ny][nx] = dist_new[cy][cx] + 1
                 q.append((nx, ny))
 
-        # Teleport Jump:
+                # Do NOT let the BFS calculate a walking path "through" a teleport source!
+                if (nx, ny) not in teleport_64:
+                    dist_new[ny][nx] = dist_new[cy][cx] + 1
+                    q.append((nx, ny))
+
+        # Teleport Jump
         for src_pad, dst_pad in teleport_64.items():
             if (cx, cy) == dst_pad:
                 if dist_new[src_pad[1]][src_pad[0]] == -1:

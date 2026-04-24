@@ -218,6 +218,29 @@ def convert_image(image_path, output_path, maze_cells=64, threshold=128):
     print(f"Start detected at {start_pos} from {start_info[0]} border pixels {start_info[1]}-{start_info[2]}")
     print(f"Goal detected at  {goal_pos} from {goal_info[0]} border pixels {goal_info[1]}-{goal_info[2]}")
     print("1 = wall, 0 = open path, 2 = start, 3 = goal")
+    return start_pos, goal_pos;
+
+def get_start_goal(maze_folder):
+    """
+    Detect start and goal positions for a given maze folder.
+    Converts from 129x129 grid coordinates to 64x64 cell coordinates.
+    Returns:
+        (start_64, goal_64) as (x, y) tuples in the 64x64 grid.
+    """
+    result = convert_image(
+        f"{maze_folder}/MAZE_0.png",
+        f"{maze_folder}/training.txt"
+    )
+    if result is None:
+        raise Exception(f"Could not detect start/goal for {maze_folder}")
+ 
+    start_pos, goal_pos = result
+ 
+    # convert from 129x129 (row, col) to 64x64 (x, y)
+    start_64 = (start_pos[1] // 2, start_pos[0] // 2)
+    goal_64  = (goal_pos[1] // 2,  goal_pos[0] // 2)
+ 
+    return start_64, goal_64
 
 def extract_hazards(maze_folder, maze_cells=64):
     # use the same logic of read maze to hazards
@@ -260,11 +283,12 @@ def extract_hazards(maze_folder, maze_cells=64):
     # Exclude BOTH teleports and confusion from the fire detection
     fire = [f for f in fire if f not in teleport_cells and f not in confusion_cells]
 
+
     return {
         'fire': fire,
         'teleports': data["teleports"],
         'confusion': data["confusion"],
-        'blue_traps': data.get("blue_traps", [])  # Add this line
+        'blue_traps': data.get("blue_traps", []),
     }
 
 if __name__ == "__main__":

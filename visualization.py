@@ -6,7 +6,7 @@ import numpy as np
 GRID = 64
 
 
-def animate_path(passable, path_cells, hazards_data, title="Live Agent Run"):
+def animate_path(passable, path_cells, hazards_data, v_groups=None, title="Live Agent Run"):
     fig, ax = plt.subplots(figsize=(10, 10))
     ax.set_facecolor('#1a1a2e')  # dark background
 
@@ -41,10 +41,12 @@ def animate_path(passable, path_cells, hazards_data, title="Live Agent Run"):
         ax.scatter(cx, cy, color='#f7d716', marker='x', s=80, linewidths=2, zorder=3)
 
     # --- ROTATING FIRE SETUP ---
-    from maze_agent import V_GROUPS, _rot90
+    from maze_agent import _rot90
+    if v_groups is None:
+        from maze_agent import V_GROUPS as v_groups
 
     fire_scatters = []
-    for vg in V_GROUPS:
+    for vg in v_groups:
         # Draw pivot point (static, dark red)
         px, py = vg['pivot']
         ax.scatter(px, py, color='#8b0000', marker='^', s=70, zorder=4, alpha=0.9)

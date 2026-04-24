@@ -234,11 +234,17 @@ def get_start_goal(maze_folder):
     if result is None:
         raise Exception(f"Could not detect start/goal for {maze_folder}")
  
-    start_pos, goal_pos = result
- 
+    bottom_pos, top_pos = result
+
+    def to_64(pos):
+        row, col = pos[0], pos[1]
+        x = min(63, max(0, col//2))
+        y = min(63, max(0, row//2))
+        return(x,y)
+
     # convert from 129x129 (row, col) to 64x64 (x, y)
-    start_64 = (start_pos[1] // 2, start_pos[0] // 2)
-    goal_64  = (goal_pos[1] // 2,  goal_pos[0] // 2)
+    start_64 = to_64(top_pos)
+    goal_64  = to_64(bottom_pos)
  
     return start_64, goal_64
 

@@ -24,7 +24,7 @@ import numpy as np
 from collections import defaultdict
 from enum import Enum
 from typing import List, Tuple, Optional
-from imageToMaze import HAZARD_DATA
+from imageToMaze import HAZARD_DATA, get_start_goal
 
 # environment constants
 class Action(Enum):
@@ -38,8 +38,8 @@ class TurnResult:
         self.actions_executed=0
 
 GRID   = 64
-START  = (31, 0)
-GOAL   = (31, 63)
+maze_folder = "maze-alpha"
+START, GOAL = get_start_goal(maze_folder)
 
 # --- FIRE ROTATION LOGIC ---
 # Use same fire pattern for both mazes

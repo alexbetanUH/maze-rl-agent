@@ -96,10 +96,10 @@ _INVERT = {Action.MOVE_UP:Action.MOVE_DOWN,Action.MOVE_DOWN:Action.MOVE_UP,
 
 # environmnent
 class MazeEnvironment:
-    def __init__(self, hazards_data):
+    def __init__(self, hazards_data, passable=None):
         import os;
         _here = os.path.dirname(os.path.abspath(__file__));
-        self._p = np.load(os.path.join(_here, 'passable.npy'))
+        self._p = passable if passable is not None else np.load(os.path.join(_here, 'passable.npy'))
         self._ep = -1;
         self._pits = frozenset();
         self._pos = START
@@ -239,12 +239,12 @@ class QLearningAgent:
     def _get_state(self, pos, turn):
         return (pos, (turn // 5) % 4)
 
-    def plan_turn(self, last_result):
+    def plan_turn(self, last_result, update_q=True):
         if last_result is not None:
-            self._process(last_result)
+            self._process(last_result, update_q=update_q)
         return self._pack(5)
 
-    def _process(self, res):
+    def _process(self, res, update_q=True):
         pos = res.current_position
         prev = self.last_pos
         act = self.last_action
@@ -263,18 +263,20 @@ class QLearningAgent:
 
         if res.is_dead:
             self.death_count[pos] += 1
-            # Punish ONLY the specific phase that killed it
-            start_state = self._get_state(START, self.turn_count)
-            self._q(prev_state, act, PIT_PENALTY, start_state)
+            if update_q:
+                start_state = self._get_state(START, self.turn_count)
+                self._q(prev_state, act, PIT_PENALTY, start_state)
             self.current_pos = START
             return
 
         if res.is_goal_reached:
-            self._q(prev_state, act, GOAL_REWARD, curr_state)
+            if update_q:
+                self._q(prev_state, act, GOAL_REWARD, curr_state)
             self.current_pos = pos
             return
 
-        self._q(prev_state, act, STEP_PENALTY + WALL_PENALTY * res.wall_hits, curr_state)
+        if update_q:
+            self._q(prev_state, act, STEP_PENALTY + WALL_PENALTY * res.wall_hits, curr_state)
         self.current_pos = pos
 
     def _q(self, s_state, a, r, sn_state):
@@ -355,11 +357,11 @@ class QLearningAgent:
 
 
 # runners
-def run_episode(env, agent, max_turns=10000, verbose=False):
+def run_episode(env, agent, max_turns=10000, verbose=False, training=True):
     pos=env.reset(); agent.reset_episode(); last_result=None
     turn=0; path_cells=[pos]
     while turn<max_turns:
-        actions=agent.plan_turn(last_result)
+        actions=agent.plan_turn(last_result, update_q=training)
         last_result=env.step(actions)
         path_cells.append(last_result.current_position); turn+=1
         if last_result.is_goal_reached:
@@ -426,8 +428,13 @@ if __name__=='__main__':
         dst = ((dx - 1) // 2, (dy - 1) // 2)
         teleport_64[src] = dst
 
-    # Rebuild V_GROUPS dynamically for this maze
-    V_GROUPS = build_dynamic_fires(maze_folder, dynamic_hazards)
+    # Use exact v_groups if defined in HAZARD_DATA, otherwise build from fire_pivots
+    raw_vg = dynamic_hazards.get('v_groups', [])
+    if raw_vg:
+        V_GROUPS = [{'pivot': tuple(vg['pivot']), 'arms': [tuple(a) for a in vg['arms']]}
+                    for vg in raw_vg]
+    else:
+        V_GROUPS = build_dynamic_fires(maze_folder, dynamic_hazards)
 
     # Teleport-Aware BFS Distance Map
     from collections import deque
@@ -480,12 +487,12 @@ if __name__=='__main__':
         train_hist.append(stats)
 
     print(f"\n{'='*62}")
-    print("  EVALUATION  (5 episodes, ε=0.00)")
+    print("  EVALUATION  (5 episodes, ε=0.05, Q frozen)")
     print(f"{'='*62}")
-    agent.epsilon = 0.00
+    agent.epsilon = 0.05
     test_results=[]
     for ep in range(1,6):
-        stats=run_episode(env,agent,verbose=True)
+        stats=run_episode(env,agent,verbose=True,training=False)
         print(f"  Ep {ep}: turns={stats['turns_taken']:5d}  deaths={stats['deaths']:2d}  "
               f"cells={stats['cells_explored']:4d}  success={stats['success']}")
         test_results.append(stats)
@@ -502,11 +509,46 @@ if __name__=='__main__':
                    'cells':[r['cells_explored'] for r in train_hist]},f,indent=2)
     print("  Saved metrics.json + train_data.json")
 
-    # Visualize best eval run
-    best_run = min(test_results, key=lambda r: r['turns_taken'])
-    final_path = best_run['path_cells']
-
     from visualization import animate_path
-    print("Generating live animation...")
-    animate_path(passable, final_path, dynamic_hazards, title="Final Evaluation Path (Live)")
+    vgroups_a = V_GROUPS
+    best_run = min(test_results, key=lambda r: r['turns_taken'])
+    animate_path(passable, best_run['path_cells'], dynamic_hazards,
+                 v_groups=vgroups_a, title="maze-alpha Evaluation Path")
+
+    # ── PHASE 2 : maze-beta transfer test (Q frozen) ───────────────
+    print(f"\n{'='*62}")
+    print("  PHASE 2 : maze-beta  (transfer test, Q frozen)")
+    print(f"{'='*62}")
+
+    maze_folder_b = "maze-beta"
+    passable_b = np.load(os.path.join(here, maze_folder_b, 'passable.npy'))
+    dist_b     = np.load(os.path.join(here, maze_folder_b, 'dist_to_goal.npy'))
+    hazards_b  = HAZARD_DATA[maze_folder_b]
+    raw_vg_b = hazards_b.get('v_groups', [])
+    vgroups_b = ([{'pivot': tuple(vg['pivot']), 'arms': [tuple(a) for a in vg['arms']]}
+                  for vg in raw_vg_b]
+                 if raw_vg_b else build_dynamic_fires(maze_folder_b, hazards_b))
+    V_GROUPS[:] = vgroups_b   # update global fire table for the environment
+
+    START, GOAL = get_start_goal(maze_folder_b)
+    env_b  = MazeEnvironment(hazards_b, passable=passable_b)
+    agent.passable = passable_b
+    agent.dist     = dist_b
+    agent.teleport_map   = {}
+    agent.confusion_map  = set()
+    agent.current_pos    = START
+    agent.last_pos       = START
+    agent.last_action    = None
+    agent.epsilon        = 0.05
+
+    beta_results=[]
+    for ep in range(1,6):
+        stats=run_episode(env_b,agent,max_turns=5000,verbose=True,training=False)
+        print(f"  Ep {ep}: turns={stats['turns_taken']:5d}  deaths={stats['deaths']:2d}  "
+              f"cells={stats['cells_explored']:4d}  success={stats['success']}")
+        beta_results.append(stats)
+
+    best_b = min(beta_results, key=lambda r: r['turns_taken'])
+    animate_path(passable_b, best_b['path_cells'], hazards_b,
+                 v_groups=vgroups_b, title="maze-beta Transfer Test Path")
 

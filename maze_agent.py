@@ -453,7 +453,6 @@ if __name__=='__main__':
                 dist_new[ny][nx] = dist_new[cy][cx] + 1
                 q.append((nx, ny))
 
-        # Teleport jump — alpha knows its own environment's teleport network
         for src_pad, dst_pad in teleport_64.items():
             if (cx, cy) == dst_pad:
                 if dist_new[src_pad[1]][src_pad[0]] == -1:
@@ -471,6 +470,7 @@ if __name__=='__main__':
     print("  TRAINING  (30 episodes, max 10 000 turns each)")
     print(f"{'='*62}")
     train_hist=[]
+    train_start = time.time()
     for ep in range(1,31):
         t0=time.time()
         stats=run_episode(env,agent,verbose=False)
@@ -480,8 +480,12 @@ if __name__=='__main__':
               f"ε={agent.epsilon:.3f} | {time.time()-t0:.1f}s")
         train_hist.append(stats)
 
+    total_train_time = time.time() - train_start
     total_train_deaths = sum(r['deaths'] for r in train_hist)
-    print(f"\n  Total training deaths : {total_train_deaths}")
+    total_train_turns = sum(r['turns_taken'] for r in train_hist)
+    print(f"\n  Total training turns  : {total_train_turns}")
+    print(f"  Total training deaths : {total_train_deaths}")
+    print(f"  Total training time   : {total_train_time:.1f}s")
     print(f"  Q-table size          : {len(agent.Q)} states")
     print(f"{'='*62}")
     print("  EVALUATION  (5 episodes, ε=0.05, Q frozen)")
@@ -561,11 +565,22 @@ if __name__=='__main__':
         agent.Q[s] *= 0.1
 
     beta_results=[]
+    beta_start = time.time()
     for ep in range(1,6):
         stats=run_episode(env_b,agent,max_turns=5000,verbose=True,training=False)
         print(f"  Ep {ep}: turns={stats['turns_taken']:5d}  deaths={stats['deaths']:2d}  "
               f"cells={stats['cells_explored']:4d}  success={stats['success']}")
         beta_results.append(stats)
+
+    beta_total_time   = time.time() - beta_start
+    beta_total_turns  = sum(r['turns_taken'] for r in beta_results)
+    beta_total_deaths = sum(r['deaths'] for r in beta_results)
+    beta_success      = sum(1 for r in beta_results if r['success'])
+    print(f"\n  Total beta turns      : {beta_total_turns}")
+    print(f"  Total beta deaths     : {beta_total_deaths}")
+    print(f"  Total beta time       : {beta_total_time:.1f}s")
+    print(f"  Beta success rate     : {beta_success}/5")
+    print(f"  Q-table size (frozen) : {len(agent.Q)} states")
 
     best_b = min(beta_results, key=lambda r: r['turns_taken'])
     animate_path(passable_b, best_b['path_cells'], hazards_b,

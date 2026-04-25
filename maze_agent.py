@@ -480,7 +480,10 @@ if __name__=='__main__':
               f"ε={agent.epsilon:.3f} | {time.time()-t0:.1f}s")
         train_hist.append(stats)
 
-    print(f"\n{'='*62}")
+    total_train_deaths = sum(r['deaths'] for r in train_hist)
+    print(f"\n  Total training deaths : {total_train_deaths}")
+    print(f"  Q-table size          : {len(agent.Q)} states")
+    print(f"{'='*62}")
     print("  EVALUATION  (5 episodes, ε=0.05, Q frozen)")
     print(f"{'='*62}")
     agent.epsilon = 0.05

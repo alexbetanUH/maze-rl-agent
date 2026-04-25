@@ -6,7 +6,7 @@ import numpy as np
 GRID = 64
 
 
-def animate_path(passable, path_cells, hazards_data, v_groups=None, title="Live Agent Run"):
+def animate_path(passable, path_cells, hazards_data, v_groups=None, title="Live Agent Run", save_path=None):
     fig, ax = plt.subplots(figsize=(10, 10))
     ax.set_facecolor('#1a1a2e')  # dark background
 
@@ -47,11 +47,8 @@ def animate_path(passable, path_cells, hazards_data, v_groups=None, title="Live 
 
     fire_scatters = []
     for vg in v_groups:
-        # Draw pivot point (static, dark red)
         px, py = vg['pivot']
         ax.scatter(px, py, color='#8b0000', marker='^', s=70, zorder=4, alpha=0.9)
-
-        # Create dynamic scatter for rotating arms
         fire_plot = ax.scatter([], [], color='#ff4500', marker='s', s=55, alpha=0.8, zorder=2)
         fire_scatters.append((vg, fire_plot))
 
@@ -127,4 +124,8 @@ def animate_path(passable, path_cells, hazards_data, v_groups=None, title="Live 
     ax.axis('off')
     fig.patch.set_facecolor('#1a1a2e')
     plt.tight_layout()
-    plt.show()
+    if save_path:
+        ani.save(save_path, writer='pillow', fps=30)
+        print(f"Saved: {save_path}")
+    else:
+        plt.show()

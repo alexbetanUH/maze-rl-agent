@@ -222,6 +222,8 @@ class QLearningAgent:
         self.epsilon = EPSILON_START
         self.episode_num = 0
         self._confused_rem = 0
+        self._recent_pos = []
+        self._last_tp_dst = None
 
         # Native turn tracker keeps the agent's brain perfectly synced with the fire
         self.turn_count = 0
@@ -232,6 +234,8 @@ class QLearningAgent:
         self.last_pos = START
         self.last_action = None
         self._confused_rem = 0
+        self._recent_pos = []
+        self._last_tp_dst = None
         self.epsilon = max(EPSILON_MIN, self.epsilon * EPSILON_DECAY)
         self.turn_count = 0
 
@@ -249,6 +253,8 @@ class QLearningAgent:
         prev = self.last_pos
         act = self.last_action
         self.explored.add(pos)
+        self._recent_pos.append(pos)
+        if len(self._recent_pos) > 40: self._recent_pos.pop(0)
 
         # Map rewards to the EXACT phase of the fire
         prev_state = self._get_state(prev, self.turn_count - 1)
@@ -258,6 +264,7 @@ class QLearningAgent:
 
         if res.teleported:
             self.teleport_map[prev] = pos
+            self._last_tp_dst = pos
         if res.is_confused:
             self.confusion_map.add(prev)
 
@@ -345,6 +352,10 @@ class QLearningAgent:
                 continue
 
             land = self.teleport_map.get((nx, ny), (nx, ny))
+            # Block immediate teleport bounce-back
+            if land == self._last_tp_dst:
+                scores.append(-9999)
+                continue
             d_val = self.dist[land[1]][land[0]] if self.dist[land[1]][land[0]] >= 0 else 9999
 
             # Pure RL Math: Maximize Q-value minus Distance Heuristic
@@ -453,11 +464,7 @@ if __name__=='__main__':
                 dist_new[ny][nx] = dist_new[cy][cx] + 1
                 q.append((nx, ny))
 
-        for src_pad, dst_pad in teleport_64.items():
-            if (cx, cy) == dst_pad:
-                if dist_new[src_pad[1]][src_pad[0]] == -1:
-                    dist_new[src_pad[1]][src_pad[0]] = dist_new[cy][cx] + 1
-                    q.append(src_pad)
+        # Teleport shortcuts excluded — destinations learned through live experience.
 
     dist = dist_new
     print(f"BFS dist START→GOAL = {dist[START[1]][START[0]]}")

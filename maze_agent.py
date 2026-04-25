@@ -53,7 +53,7 @@ V_GROUPS = [
 
 
 def _rot90(cells, piv):
-    px,py=piv; return [(px+(cy-py),py-(cx-px)) for cx,cy in cells]
+    px,py=piv; return [(px-(cy-py),py+(cx-px)) for cx,cy in cells]
 
 def _get_pits(turn_count):
     rotation_state = (turn_count // 5) % 4
@@ -447,19 +447,13 @@ if __name__=='__main__':
     while q:
         cx, cy = q.popleft()
 
-        # Walk normally
         for di, (dx, dy) in DELTA_D.items():
             nx, ny = cx + dx, cy + dy
             if 0 <= nx < GRID and 0 <= ny < GRID and passable[cy][cx][di] and dist_new[ny][nx] == -1:
                 dist_new[ny][nx] = dist_new[cy][cx] + 1
                 q.append((nx, ny))
 
-                # Do NOT let the BFS calculate a walking path "through" a teleport source!
-                if (nx, ny) not in teleport_64:
-                    dist_new[ny][nx] = dist_new[cy][cx] + 1
-                    q.append((nx, ny))
-
-        # Teleport Jump
+        # Teleport jump — alpha knows its own environment's teleport network
         for src_pad, dst_pad in teleport_64.items():
             if (cx, cy) == dst_pad:
                 if dist_new[src_pad[1]][src_pad[0]] == -1:
@@ -522,15 +516,35 @@ if __name__=='__main__':
 
     maze_folder_b = "maze-beta"
     passable_b = np.load(os.path.join(here, maze_folder_b, 'passable.npy'))
-    dist_b     = np.load(os.path.join(here, maze_folder_b, 'dist_to_goal.npy'))
     hazards_b  = HAZARD_DATA[maze_folder_b]
     raw_vg_b = hazards_b.get('v_groups', [])
     vgroups_b = ([{'pivot': tuple(vg['pivot']), 'arms': [tuple(a) for a in vg['arms']]}
                   for vg in raw_vg_b]
                  if raw_vg_b else build_dynamic_fires(maze_folder_b, hazards_b))
-    V_GROUPS[:] = vgroups_b   # update global fire table for the environment
+    V_GROUPS[:] = vgroups_b
 
     START, GOAL = get_start_goal(maze_folder_b)
+
+    # Recompute BFS for beta from its actual GOAL
+    teleport_64_b = {}
+    for (sy, sx), (dy, dx) in hazards_b.get('teleports', {}).items():
+        teleport_64_b[((sx-1)//2, (sy-1)//2)] = ((dx-1)//2, (dy-1)//2)
+    dist_b = np.full((GRID, GRID), -1, dtype=int)
+    dist_b[GOAL[1]][GOAL[0]] = 0
+    q_b = deque([GOAL])
+    while q_b:
+        cx, cy = q_b.popleft()
+        for di, (dx, dy) in DELTA_D.items():
+            nx, ny = cx+dx, cy+dy
+            if 0 <= nx < GRID and 0 <= ny < GRID and passable_b[cy][cx][di] and dist_b[ny][nx] == -1:
+                dist_b[ny][nx] = dist_b[cy][cx] + 1
+                q_b.append((nx, ny))
+        for src, dst in teleport_64_b.items():
+            if (cx, cy) == dst and dist_b[src[1]][src[0]] == -1:
+                dist_b[src[1]][src[0]] = dist_b[cy][cx] + 1
+                q_b.append(src)
+    print(f"Beta BFS dist START→GOAL = {dist_b[START[1]][START[0]]}")
+
     env_b  = MazeEnvironment(hazards_b, passable=passable_b)
     agent.passable = passable_b
     agent.dist     = dist_b
@@ -540,6 +554,8 @@ if __name__=='__main__':
     agent.last_pos       = START
     agent.last_action    = None
     agent.epsilon        = 0.05
+    for s in list(agent.Q.keys()):
+        agent.Q[s] *= 0.1
 
     beta_results=[]
     for ep in range(1,6):
@@ -550,5 +566,6 @@ if __name__=='__main__':
 
     best_b = min(beta_results, key=lambda r: r['turns_taken'])
     animate_path(passable_b, best_b['path_cells'], hazards_b,
-                 v_groups=vgroups_b, title="maze-beta Transfer Test Path")
+                 v_groups=vgroups_b, title="maze-beta Transfer Test Path",
+                 save_path=os.path.join(here, "beta_solve.gif"))
 
